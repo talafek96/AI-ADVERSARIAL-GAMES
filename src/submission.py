@@ -55,7 +55,7 @@ def dumb_heuristic2(state, agent_id):
     return sum_pawns
 
 
-def smart_heuristic(state):
+def smart_heuristic(state, agent_id):
     return
 
 
