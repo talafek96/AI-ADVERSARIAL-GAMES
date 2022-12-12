@@ -1,11 +1,54 @@
 import random
-
 import numpy as np
-
 import Gobblet_Gobblers_Env as gge
+from abc import ABC, abstractmethod
+from collections import defaultdict
 
-not_on_board = np.array([-1, -1])
 
+NOT_ON_BOARD = np.array([-1, -1])
+
+# Piece weights & identifiers:
+# ----------------------------
+B_PAWN = 5
+M_PAWN = 3
+S_PAWN = 1
+
+PAWN_MAP = {
+    'B': B_PAWN,
+    'M': M_PAWN,
+    'S': S_PAWN
+}
+
+
+# Utilities:
+# ----------
+def get_board(state: gge.State, agent_id: int) -> np.ndarray:
+    board = np.zeros((3, 3, 3))  # Create a 3x3 board that can hold up to 3 pawns in each slot
+    next_index = defaultdict(int)  # For each cell save the next index to 
+
+    pawns_on_board = [pawn for pawn in sorted(
+        list({f'{key}_0': val[0] for key, val in state.player1_pawns.items()}.items()) 
+        + list({f'{key}_1': val[0] for key, val in state.player2_pawns.items()}.items())
+    ) if np.all(pawn[1] != NOT_ON_BOARD)]  # Calculate all the pawns that are currently on the board
+
+    for pawn in pawns_on_board:
+        player = int(pawn[0][-1])  # The last letter in the pawn name is the player ID
+        multiplier = 1 if player == agent_id else -1  # The score is negative if this is the enemy's pawn
+        pawn_location = (pawn[1][0], pawn[1][1])
+        board[pawn_location][next_index[pawn_location]] = multiplier * PAWN_MAP[pawn[0][0]]
+        next_index[pawn_location] += 1
+    return board
+
+
+# Heuristics:
+# -----------
+class Heuristic(ABC):
+    def __call__(self, *args, **kwargs):
+        return self.evaluate(*args, **kwargs)
+
+    @abstractmethod
+    def evaluate(self, *args, **kwargs):
+        return
 
 # agent_id is which player I am, 0 - for the first player , 1 - if second player
 def dumb_heuristic1(state, agent_id):
@@ -45,11 +88,11 @@ def dumb_heuristic2(state, agent_id):
     sum_pawns = 0
     if agent_id == 0:
         for key, value in state.player1_pawns.items():
-            if not np.array_equal(value[0], not_on_board) and not is_hidden(state, agent_id, key):
+            if not np.array_equal(value[0], NOT_ON_BOARD) and not is_hidden(state, agent_id, key):
                 sum_pawns += 1
     if agent_id == 1:
         for key, value in state.player2_pawns.items():
-            if not np.array_equal(value[0], not_on_board) and not is_hidden(state, agent_id, key):
+            if not np.array_equal(value[0], NOT_ON_BOARD) and not is_hidden(state, agent_id, key):
                 sum_pawns += 1
 
     return sum_pawns
@@ -108,6 +151,7 @@ def alpha_beta(curr_state, agent_id, time_limit):
 
 def expectimax(curr_state, agent_id, time_limit):
     raise NotImplementedError()
+
 
 # these is the BONUS - not mandatory
 def super_agent(curr_state, agent_id, time_limit):
