@@ -1,4 +1,5 @@
 import random
+from typing import List, Union
 import numpy as np
 import Gobblet_Gobblers_Env as gge
 from abc import ABC, abstractmethod
@@ -50,6 +51,39 @@ class Heuristic(ABC):
     def evaluate(self, *args, **kwargs):
         return
 
+class WeightedPawnPosLayerDecay(Heuristic):
+    """
+    A heuristic for Gobblet Gobblers.
+
+    Weighs pawns by a predetermined weight, it's location on the board,
+    and decays each pawn according to the layer in which it resides.
+    """
+    def __init__(self, layer_decay: float=0.2):
+        self._layer_decay_mask: np.ndarray = np.ones((3, 3, 3))
+        for i in range(1, 3):
+            self._layer_decay_mask[:, :, i:] *= layer_decay
+
+        self._position_mask: np.ndarray = np.array([
+            [[3, 3, 3], [1, 1, 1], [3, 3, 3]],
+            [[1, 1, 1], [5, 5, 5], [1, 1, 1]],
+            [[3, 3, 3], [1, 1, 1], [3, 3, 3]]
+        ])
+
+        # Estimate a win as the maximal (im)possible value.
+        # Play with this value to get to a good balance (for Expectimax, for example)
+        self._win_score = 600
+    
+    def evaluate(self, state: gge.State, agent_id: int):
+        is_final = gge.is_final_state(state)
+        if is_final is not None and is_final != 0:
+            # If it is a final state and not a tie, someone won.
+            if is_final - 1 == agent_id:
+                return self._win_score
+            return -self._win_score
+
+        board = get_board(state, agent_id)
+        return np.sum(board * self._layer_decay_mask * self._position_mask)
+
 # agent_id is which player I am, 0 - for the first player , 1 - if second player
 def dumb_heuristic1(state, agent_id):
     is_final = gge.is_final_state(state)
@@ -99,7 +133,8 @@ def dumb_heuristic2(state, agent_id):
 
 
 def smart_heuristic(state, agent_id):
-    return
+    heuristic: WeightedPawnPosLayerDecay = WeightedPawnPosLayerDecay()
+    return heuristic(state, agent_id)
 
 
 # IMPLEMENTED FOR YOU - NO NEED TO CHANGE
