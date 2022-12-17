@@ -237,7 +237,7 @@ def is_final_state(curr_state):
             if win is None:
                 win = arr[i][0]
             else:
-                if win is not arr[i][0]:
+                if win != arr[i][0]:
                     return 0
 
     # check columns
@@ -247,7 +247,7 @@ def is_final_state(curr_state):
             if win is None:
                 win = arr[0][j]
             else:
-                if win is not arr[0][j]:
+                if win != arr[0][j]:
                     return 0
 
     # check obliques
@@ -256,7 +256,7 @@ def is_final_state(curr_state):
         if win is None:
             win = arr[0][0]
         else:
-            if win is not arr[0][0]:
+            if win != arr[0][0]:
                 return 0
 
     if arr[0][2] == arr[1][1] and arr[2][0] == arr[1][1] and (not arr[0][2] == " ") and (not arr[1][1] == " ") and (
@@ -264,7 +264,7 @@ def is_final_state(curr_state):
         if win is None:
             win = arr[1][1]
         else:
-            if win is not arr[1][1]:
+            if win != arr[1][1]:
                 return 0
 
     if win is 1:
