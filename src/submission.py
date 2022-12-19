@@ -76,6 +76,7 @@ class WeightedPawnPosLayerDecay(Heuristic):
     def evaluate(self, state: gge.State, agent_id: int):
         is_final = gge.is_final_state(state)
         if is_final is not None and is_final != 0:
+            is_final = int(is_final)
             # If it is a final state and not a tie, someone won.
             if is_final - 1 == agent_id:
                 return self._win_score
@@ -91,7 +92,7 @@ def dumb_heuristic1(state, agent_id):
     if is_final is None:
         return 0
     # this means it's a tie
-    if is_final is 0:
+    if is_final == 0:
         return -1
     # now convert to our numbers the win
     winner = int(is_final) - 1
@@ -132,7 +133,7 @@ def dumb_heuristic2(state, agent_id):
     return sum_pawns
 
 
-def smart_heuristic(state, agent_id):
+def smart_heuristic(state: gge.State, agent_id: int):
     heuristic: WeightedPawnPosLayerDecay = WeightedPawnPosLayerDecay()
     return heuristic(state, agent_id)
 
@@ -159,7 +160,7 @@ def random_agent(curr_state, agent_id, time_limit):
 
 
 # TODO - instead of action to return check how to raise not_implemented
-def greedy(curr_state, agent_id, time_limit):
+def greedy(curr_state: gge.State, agent_id: int, time_limit):
     neighbor_list = curr_state.get_neighbors()
     max_heuristic = 0
     max_neighbor = None
@@ -173,7 +174,15 @@ def greedy(curr_state, agent_id, time_limit):
 
 # TODO - add your code here
 def greedy_improved(curr_state, agent_id, time_limit):
-    raise NotImplementedError()
+    neighbor_list = curr_state.get_neighbors()
+    max_heuristic = -np.inf
+    max_neighbor = None
+    for neighbor in neighbor_list:
+        curr_heuristic = smart_heuristic(neighbor[1], agent_id)
+        if curr_heuristic >= max_heuristic:
+            max_heuristic = curr_heuristic
+            max_neighbor = neighbor
+    return max_neighbor[0]
 
 
 def rb_heuristic_min_max(curr_state, agent_id, time_limit):
