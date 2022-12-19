@@ -4,7 +4,7 @@ import Gobblet_Gobblers_Env as gge
 import submission
 
 # TODO - elaborate
-time_limit = 1
+time_limit = 80
 steps_limit = 100
 
 agents = {
@@ -54,6 +54,7 @@ def play_game(agent_1_str, agent_2_str):
             if chosen_step is None:
                 continue
             action = chosen_step[0], int(chosen_step[1])
+
             if (end_time - start_time) > time_limit and (agent_2_str in ["minimax", "alpha_beta", "expectimax"]):
                 raise RuntimeError("Agent used too much time!")
             env.step(action)
