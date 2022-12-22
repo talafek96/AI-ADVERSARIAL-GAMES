@@ -2,13 +2,6 @@ import threading as th
 import time
 
 
-def do_stuff(secs: float):
-    secs = float(secs)
-    time.sleep(secs)
-    print(f'Did stuff for {secs:.2} seconds!')
-
-
-
 class AnytimeAlgorithm(th.Thread):
     """
     Thread class with a stop() method. The thread itself has to check
