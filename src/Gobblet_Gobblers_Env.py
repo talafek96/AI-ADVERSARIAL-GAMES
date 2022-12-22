@@ -100,7 +100,7 @@ def find_curr_location(curr_state, pawn, player):
                 return pawn_value[0]
 
 
-def is_legal_step(action, curr_state):
+def is_legal_step(action, curr_state, to_print=False):
     pawn_list = {
         "agent1_big1": [curr_state.player1_pawns["B1"][0], "B"],
         "agent1_big2": [curr_state.player1_pawns["B2"][0], "B"],
@@ -117,27 +117,27 @@ def is_legal_step(action, curr_state):
     }
 
     if len(action[0]) != 2:
-        print("ILLEGAL pawn type")
+        if to_print: print("ILLEGAL pawn type")
         return False
     if len(str(action[1])) != 1:
-        print("ILLEGAL location type")
+        if to_print: print(f"ILLEGAL location type. Action: {action}")
         return False
     if action[1] > 8 or action[1] < 0:
-        print("ILLEGAL location type")
+        if to_print: print(f"ILLEGAL location type. Action: {action}")
         return False
 
     if action[0][0] != "B" and action[0][0] != "M" and action[0][0] != "S":
-        print("ILLEGAL pawn type")
+        if to_print: print(f"ILLEGAL pawn type. Action: {action}")
         return False
     if action[0][1] != "1" and action[0][1] != "2":
-        print("ILLEGAL pawn type")
+        if to_print: print(f"ILLEGAL pawn type. Action: {action}")
         return False
     # checks if there is an attempt to place pawn on smaller pawn
     location = action_to_direction[action[1]]
     for key, value in pawn_list.items():
         if np.array_equal(value[0], location):
             if size_cmp(value[1], action[0][0]) >= 0:
-                print("ILLEGAL placement of pawn")
+                if to_print: print(f"ILLEGAL placement of pawn. Action: {action}")
                 return False
 
     # finding current location
@@ -148,7 +148,7 @@ def is_legal_step(action, curr_state):
         for key, value in pawn_list.items():
             if np.array_equal(value[0], curr_location):
                 if size_cmp(value[1], action[0][0]) > 0:
-                    print("ILLEGAL pawn selection")
+                    if to_print: print("ILLEGAL pawn selection")
                     return False
     return True
 
@@ -578,7 +578,7 @@ class GridWorldEnv(gym.Env):
 
     def step(self, action):
         # checks that the step is legal
-        if not is_legal_step(action, self.s):
+        if not is_legal_step(action, self.s, to_print=True):
             return
 
         if self.s.turn == 0:

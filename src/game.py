@@ -4,7 +4,7 @@ import Gobblet_Gobblers_Env as gge
 import submission
 
 # TODO - elaborate
-time_limit = 80
+time_limit = 30
 steps_limit = 100
 
 agents = {
@@ -31,9 +31,10 @@ def play_game(agent_1_str, agent_2_str):
     start_time = 0
     end_time = 0
     steps_per_game = 0
+    print(f'Blue player is {agent_1_str} and red player is {agent_2_str}.')
     while winner is None:
         if env.s.turn == 0:
-            print("player 0")
+            print(f"player 0 (Blue - {agent_1_str})")
             start_time = time.time()
             chosen_step = agent_1(env.get_state(), 0, time_limit)
             end_time = time.time()
@@ -47,7 +48,7 @@ def play_game(agent_1_str, agent_2_str):
             steps_per_game += 1
             print("time for step was", end_time - start_time)
         else:
-            print("player 1")
+            print(f"player 1 (Red - {agent_2_str})")
             start_time = time.time()
             chosen_step = agent_2(env.get_state(), 1, time_limit)
             end_time = time.time()
