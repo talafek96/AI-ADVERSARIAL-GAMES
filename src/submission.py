@@ -11,7 +11,7 @@ NOT_ON_BOARD = np.array([-1, -1])
 
 # Piece weights & identifiers:
 # ----------------------------
-B_PAWN = 5
+B_PAWN = 6
 M_PAWN = 3
 S_PAWN = 1
 
@@ -229,7 +229,7 @@ class Minimax(Agent):
         
         return found_winning_action, best_action
     
-    def minimax(self, state: gge.State, depth_limit: int=np.inf) -> Tuple[Tuple[str, int], float]:
+    def minimax(self, state: gge.State, depth_limit: int=np.inf, prune: bool=False) -> Tuple[Tuple[str, int], float]:
         """
         Calculates the next best action from the input state under a depth limit.
 
@@ -249,10 +249,15 @@ class Minimax(Agent):
         """
         self.__action_to_curr_state = tuple()  # Reset the action take to the current state
         
-        return self._minimax_aux(state, depth_limit)
+        return self._minimax_aux(state, depth_limit, prune)
         
     
-    def _minimax_aux(self, state: gge.State, depth_limit: int=np.inf) -> Tuple[Tuple[str, int], float]:
+    def _minimax_aux(self, 
+                     state: gge.State, 
+                     depth_limit: int=np.inf, 
+                     prune: bool=False,
+                     alpha: float=-np.inf,
+                     beta: float=np.inf) -> Tuple[Tuple[str, int], float]:
         assert depth_limit >= 0
         if self.should_abort():
             # Was decided to abort the search
@@ -293,10 +298,19 @@ class Minimax(Agent):
                     continue
                 
                 if not found_winning_action:
-                    _, value = self.minimax(state=neighbour_state, depth_limit=depth_limit - 1)
+                    _, value = self._minimax_aux(state=neighbour_state,
+                                                 depth_limit=depth_limit - 1,
+                                                 prune=prune,
+                                                 alpha=alpha,
+                                                 beta=beta)
                     if value > max_value:
                         max_value = value
                         best_action = neighbour_action
+                    
+                    if prune:
+                        alpha = max(max_value, alpha)
+                        if max_value >= beta:
+                            return best_action, np.inf
             
             return best_action, max_value
         
@@ -304,7 +318,6 @@ class Minimax(Agent):
             # This isn't the agent's turn so it wants to minimize the agent's value.
             min_value = np.inf
             best_action = random.choice(neighbours) if len(neighbours) else None
-            found_winning_action = False
 
             for neighbour in neighbours:
                 neighbour_action = type(self).get_neighbour_action(neighbour)
@@ -315,21 +328,19 @@ class Minimax(Agent):
                     # Was decided to abort the search
                     return self.__action_to_curr_state, 0
 
-                if type(self).is_player_winner(neighbour_state, state.turn):
-                    # If this player is going to win by doing this action, no need to check further.
-                    # Will attempt to find the optimal winning action.
-                    found_winning_action = True
-                    value = self._heuristic(neighbour_state, self.agent_id)
-                    if value < min_value:
-                        min_value = value
-                        best_action = neighbour_action
-                    continue
-
-                if not found_winning_action:
-                    _, value = self.minimax(state=neighbour_state, depth_limit=depth_limit - 1)
-                    if value < min_value:
-                        min_value = value
-                        best_action = neighbour_action
+                _, value = self._minimax_aux(state=neighbour_state,
+                                                depth_limit=depth_limit - 1,
+                                                prune=prune,
+                                                alpha=alpha,
+                                                beta=beta)
+                if value < min_value:
+                    min_value = value
+                    best_action = neighbour_action
+                
+                if prune:
+                    beta = min(min_value, beta)
+                    if min_value <= alpha:
+                        return best_action, -np.inf
             
             return best_action, min_value
 
@@ -339,8 +350,9 @@ class RBMinimax(Minimax, AnytimeAlgorithm):
     update_lock: th.Lock
     num_iterations: int
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, prune: bool=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.prune = prune
         self.best_action = None  # A tuple of the form (pawn, location)
         self.best_value = -np.inf
         self.update_lock = th.Lock()  # A lock for updating the best action.
@@ -366,7 +378,9 @@ class RBMinimax(Minimax, AnytimeAlgorithm):
                         self.best_action = best_action
                         return
 
-            best_action, best_value = self.minimax(self.starting_state, curr_depth_limit)
+            best_action, best_value = self.minimax(state=self.starting_state, 
+                                                   depth_limit=curr_depth_limit,
+                                                   prune=self.prune)
             with self.update_lock:
                 if self.is_stopped():
                     return self.best_action
@@ -487,18 +501,32 @@ def rb_heuristic_min_max(curr_state, agent_id, time_limit) -> Tuple[str, int]:
                            agent_id=agent_id,
                            heuristic=HEURISTIC_OBJ)
     
-    # TODO: Check about adding update_lock
     # Start the minimax search and abort it just before the timer expires
     rb_minimax.start()
     rb_minimax.join(timeout=time_limit - 0.2)
-    rb_minimax.stop()
+    with rb_minimax.update_lock:
+        rb_minimax.stop()
 
     print(f'RB-Minimax has completed {rb_minimax.num_iterations} full iterations.')
     return rb_minimax.best_action
 
 
 def alpha_beta(curr_state, agent_id, time_limit):
-    raise NotImplementedError()
+    global HEURISTIC_OBJ
+
+    rb_minimax = RBMinimax(starting_state=curr_state,
+                           agent_id=agent_id,
+                           prune=True,
+                           heuristic=HEURISTIC_OBJ)
+    
+    # Start the minimax search and abort it just before the timer expires
+    rb_minimax.start()
+    rb_minimax.join(timeout=time_limit - 0.2)
+    with rb_minimax.update_lock:
+        rb_minimax.stop()
+
+    print(f'RB-Minimax has completed {rb_minimax.num_iterations} full iterations.')
+    return rb_minimax.best_action
 
 
 def expectimax(curr_state, agent_id, time_limit):
