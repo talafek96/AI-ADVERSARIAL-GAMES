@@ -268,12 +268,12 @@ class Minimax(Agent):
         
         self.__action_to_curr_state = tuple()  # Reset the action take to the current state
         
-        neighbours = sorted(self.expand(state), 
-                            key=lambda neighbour: self._heuristic(type(self).get_neighbour_state(neighbour), self.agent_id)
-        )
-        
         if state.turn == self.agent_id:
             # This is the agent's turn so it wants to maximize it's value.
+            neighbours = sorted(self.expand(state), 
+                            key=lambda neighbour: self._heuristic(type(self).get_neighbour_state(neighbour), self.agent_id),
+                            reverse=True
+            )
             max_value = -np.inf
             best_action = random.choice(neighbours) if len(neighbours) else None
             found_winning_action = False
@@ -316,6 +316,10 @@ class Minimax(Agent):
         
         else:
             # This isn't the agent's turn so it wants to minimize the agent's value.
+            neighbours = sorted(self.expand(state), 
+                            key=lambda neighbour: self._heuristic(type(self).get_neighbour_state(neighbour), self.agent_id)
+            )
+
             min_value = np.inf
             best_action = random.choice(neighbours) if len(neighbours) else None
 
