@@ -1,6 +1,6 @@
 import random
 import threading as th
-from typing import List, Tuple
+from typing import Callable, List, Tuple
 import numpy as np
 import Gobblet_Gobblers_Env as gge
 from abc import ABC, abstractmethod
@@ -40,6 +40,30 @@ def get_board(state: gge.State, agent_id: int) -> np.ndarray:
         board[pawn_location][next_index[pawn_location]] = multiplier * PAWN_MAP[pawn[0][0]]
         next_index[pawn_location] += 1
     return board
+
+
+def is_action_eating_enemy_pawn(curr_state: gge.State, action: Tuple[str, int]) -> bool:
+    board = get_board(curr_state, curr_state.turn)
+    action_coords: Tuple[int, int] = tuple(gge.action_to_direction[action[1]])
+    action_pawn: str = action[0][0]
+
+    if not np.any(board[action_coords] != 0) or not board[action_coords][0] < 0:
+        return False
+
+    return PAWN_MAP[action_pawn] > np.abs(board[action_coords][0])
+
+
+def is_action_involving_pawn_s(action: Tuple[str, int]) -> bool:
+    return action[0][0] == 'S'
+
+
+def get_event_value(curr_state: gge.State, action: Tuple[str, int]) -> float:
+    BASE_VALUE = 1
+
+    if is_action_eating_enemy_pawn(curr_state, action) or is_action_involving_pawn_s(action):
+        BASE_VALUE *= 2
+
+    return BASE_VALUE
 
 
 # Heuristics:
@@ -398,6 +422,210 @@ class RBMinimax(Minimax, AnytimeAlgorithm):
         return
 
 
+class Expectimax(Agent):
+    _heuristic: MAHeuristic
+    __action_to_curr_state: Tuple[str, int]
+    _is_probablistic: Callable[[gge.State], bool]
+    _event_value: Callable[[gge.State, Tuple[str, int]], float]
+
+    def __init__(self,
+                 heuristic: MAHeuristic,
+                 is_probablistic_fn: Callable[[gge.State], bool],
+                 event_value_fn: Callable[[gge.State, Tuple[str, int]], float],
+                 *args,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
+        self._heuristic = heuristic
+        self._is_probablistic = is_probablistic_fn
+        self._event_value = event_value_fn
+        self.__action_to_curr_state = tuple()
+
+    def should_abort(self) -> bool:
+        return False
+    
+    def search_for_immediate_win(self, state: gge.State):
+        neighbours = sorted(self.expand(state), 
+                            key=lambda neighbour: self._heuristic(type(self).get_neighbour_state(neighbour), self.agent_id)
+        )
+
+        found_winning_action = False
+        max_value = -np.inf
+        best_action = None
+
+        for neighbour in neighbours:
+            neighbour_action = type(self).get_neighbour_action(neighbour)
+            neighbour_state = type(self).get_neighbour_state(neighbour)
+
+            if type(self).is_player_winner(neighbour_state, self.agent_id):
+                found_winning_action = True
+                value = self._heuristic(neighbour_state, self.agent_id)
+                if value > max_value:
+                    max_value = value
+                    best_action = neighbour_action
+        
+        return found_winning_action, best_action
+    
+    def total_event_values(self, state: gge.State, neighbours: Tuple[Tuple[str, int], gge.State]) -> float:
+        return np.sum([self._event_value(state, action) for action, _ in neighbours])
+
+    def expectimax(self, state: gge.State, depth_limit: int=np.inf) -> Tuple[Tuple[str, int], float]:
+        """
+        Calculates the next best expected action starting from the input state subjected to a depth limit.
+
+        Parameters:
+        -----------
+        state : gge.State
+            The starting state to calculate the next best action from.
+        
+        depth_limit : int = np.inf
+            The maximum depth to search in, should be initially at least 1.
+
+        Return:
+        -------
+        action: (pawn, board_cell_index), value: float
+            Returns the best action to take as a tuple of the form (pawn, board_cell_index), and 
+            the value that action is guaranteed to achieve heuristically.
+        """
+        self.__action_to_curr_state = tuple()  # Reset the action take to the current state
+        
+        return self._expectimax_aux(state, depth_limit)
+        
+    
+    def _expectimax_aux(self,
+                        state: gge.State, 
+                        depth_limit: int=np.inf) -> Tuple[Tuple[str, int], float]:
+        assert depth_limit >= 0
+        if self.should_abort():
+            # Was decided to abort the search
+            return self.__action_to_curr_state, 0
+        
+        if type(self).is_terminal_state(state) or depth_limit == 0:
+            return self.__action_to_curr_state, self._heuristic(state, self.agent_id)
+
+        if self._is_probablistic(state):
+            # Calculate expected value
+            neighbours = self.expand(state)
+            return self.__action_to_curr_state, np.sum(
+                np.array([
+                    self._event_value(state, action) * self._expectimax_aux(child_state, depth_limit=depth_limit - 1)[1]
+                    for action, child_state in neighbours
+                ])
+            ) / self.total_event_values(state, neighbours)
+        
+        self.__action_to_curr_state = tuple()  # Reset the action take to the current state
+        
+        if state.turn == self.agent_id:
+            # This is the agent's turn so it wants to maximize it's value.
+            neighbours = sorted(self.expand(state), 
+                            key=lambda neighbour: self._heuristic(type(self).get_neighbour_state(neighbour), self.agent_id),
+                            reverse=True
+            )
+            max_value = -np.inf
+            best_action = random.choice(neighbours) if len(neighbours) else None
+            found_winning_action = False
+
+            for neighbour in neighbours:
+                neighbour_action = type(self).get_neighbour_action(neighbour)
+                neighbour_state = type(self).get_neighbour_state(neighbour)
+                
+                self.__action_to_curr_state = neighbour_action
+                if self.should_abort():
+                    # Was decided to abort the search
+                    return self.__action_to_curr_state, 0
+
+                if type(self).is_player_winner(neighbour_state, state.turn):
+                    # If this player is going to win by doing this action, no need to check further.
+                    # Will attempt to find the optimal winning action.
+                    found_winning_action = True
+                    value = self._heuristic(neighbour_state, self.agent_id)
+                    if value > max_value:
+                        max_value = value
+                        best_action = neighbour_action
+                    continue
+                
+                if not found_winning_action:
+                    _, value = self._expectimax_aux(state=neighbour_state,
+                                                    depth_limit=depth_limit - 1)
+                    if value > max_value:
+                        max_value = value
+                        best_action = neighbour_action
+            
+            return best_action, max_value
+        
+        else:
+            # This isn't the agent's turn so it wants to minimize the agent's value.
+            neighbours = sorted(self.expand(state), 
+                            key=lambda neighbour: self._heuristic(type(self).get_neighbour_state(neighbour), self.agent_id)
+            )
+
+            min_value = np.inf
+            best_action = random.choice(neighbours) if len(neighbours) else None
+
+            for neighbour in neighbours:
+                neighbour_action = type(self).get_neighbour_action(neighbour)
+                neighbour_state = type(self).get_neighbour_state(neighbour)
+
+                self.__action_to_curr_state = neighbour_action
+                if self.should_abort():
+                    # Was decided to abort the search
+                    return self.__action_to_curr_state, 0
+
+                _, value = self._expectimax_aux(state=neighbour_state,
+                                                depth_limit=depth_limit - 1)
+                if value < min_value:
+                    min_value = value
+                    best_action = neighbour_action
+            
+            return best_action, min_value
+
+
+class RBExpectimax(Expectimax, AnytimeAlgorithm):
+    best_action: Tuple[str, int]
+    update_lock: th.Lock
+    num_iterations: int
+
+    def __init__(self, prune: bool=False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.best_action = None  # A tuple of the form (pawn, location)
+        self.best_value = -np.inf
+        self.update_lock = th.Lock()  # A lock for updating the best action.
+        self.num_iterations = 0
+    
+    def reset(self) -> None:
+        self.num_iterations = 0
+        self.best_action = None
+        self.reset_agent()
+
+    def should_abort(self) -> bool:
+        return self.is_stopped()
+
+    def run(self) -> None:
+        self.reset()
+        curr_depth_limit = 1
+
+        while not self.is_stopped():
+            found_winning_action, best_action = self.search_for_immediate_win(self.starting_state)
+            if found_winning_action:
+                with self.update_lock:
+                    if not self.is_stopped():
+                        self.best_action = best_action
+                        return
+
+            best_action, best_value = self.expectimax(state=self.starting_state, 
+                                                   depth_limit=curr_depth_limit)
+            with self.update_lock:
+                if self.is_stopped():
+                    return self.best_action
+                
+                self.best_action = best_action
+                self.best_value = best_value
+                self.num_iterations += 1
+                curr_depth_limit += 1
+                print(f'The best action after {self.num_iterations} iterations is {self.best_action} with the estimated heuristical value of {self.best_value}.')
+        
+        return
+
+
 # agent_id is which player I am, 0 - for the first player , 1 - if second player
 def dumb_heuristic1(state, agent_id):
     is_final = gge.is_final_state(state)
@@ -534,7 +762,22 @@ def alpha_beta(curr_state, agent_id, time_limit):
 
 
 def expectimax(curr_state, agent_id, time_limit):
-    raise NotImplementedError()
+    global HEURISTIC_OBJ
+
+    rb_expectimax = RBExpectimax(starting_state=curr_state,
+                                 agent_id=agent_id,
+                                 heuristic=HEURISTIC_OBJ,
+                                 is_probablistic_fn=lambda state: state.turn != agent_id,
+                                 event_value_fn=get_event_value)
+    
+    # Start the Expectimax search and abort it just before the timer expires
+    rb_expectimax.start()
+    rb_expectimax.join(timeout=time_limit - 0.2)
+    with rb_expectimax.update_lock:
+        rb_expectimax.stop()
+
+    print(f'RB-Expectimax has completed {rb_expectimax.num_iterations} full iterations.')
+    return rb_expectimax.best_action
 
 
 # these is the BONUS - not mandatory
